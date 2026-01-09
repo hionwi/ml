@@ -7,7 +7,7 @@
 
 #ifndef NN_MALLOC
 #include <stdlib.h>
-#define NN_MALLOC malloc
+#define NN_MALLOC calloc
 #endif // NN_MALLOC
 
 #ifndef NN_ASSERT
@@ -59,19 +59,20 @@ float nn_cost(NN m, Mat X, Mat Y);
 float nn_finite_diff(NN m, NN g, float eps, Mat X, Mat Y);
 void nn_train(NN m, NN g, Mat X, Mat Y, float lr);
 
-void nn_zero(NN m);                         // 将梯度矩阵清零
-void nn_backprop(NN m, NN g, Mat X, Mat Y); // 反向传播计算梯度
+void nn_backprop(NN m, NN g, Mat X, Mat Y);
 
 #endif // NN_H_
 
 #ifdef NN_IMPLEMENTATION
+
+// init mat = [0]
 Mat mat_alloc(size_t rows, size_t cols)
 {
     Mat m;
     m.rows = rows;
     m.cols = cols;
     m.stride = cols;
-    m.es = NN_MALLOC(sizeof(*m.es) * rows * cols);
+    m.es = NN_MALLOC(rows * cols, sizeof(*m.es));
     NN_ASSERT(m.es != NULL);
     return m;
 }
@@ -177,11 +178,11 @@ NN nn_alloc(size_t *arch, size_t arch_count)
 {
     NN m;
     m.count = arch_count - 1;
-    m.ws = NN_MALLOC(sizeof(*m.ws) * m.count);
+    m.ws = NN_MALLOC(m.count, sizeof(*m.ws));
     NN_ASSERT(m.ws != NULL);
-    m.bs = NN_MALLOC(sizeof(*m.bs) * m.count);
+    m.bs = NN_MALLOC(m.count, sizeof(*m.bs));
     NN_ASSERT(m.bs != NULL);
-    m.as = NN_MALLOC(sizeof(*m.as) * (m.count + 1));
+    m.as = NN_MALLOC(m.count + 1, sizeof(*m.as));
     NN_ASSERT(m.as != NULL);
 
     m.as[0] = mat_alloc(1, arch[0]); // input layer
@@ -312,115 +313,39 @@ void nn_train(NN m, NN g, Mat X, Mat Y, float lr)
     }
 }
 
-// 将神经网络的所有权重和偏置清零 (用于累积梯度前清空 g)
-void nn_zero(NN m)
-{
-    for (size_t i = 0; i < m.count; i++)
-    {
-        mat_fill(m.ws[i], 0);
-        mat_fill(m.bs[i], 0);
-    }
-}
-
-// 反向传播算法实现
 void nn_backprop(NN m, NN g, Mat X, Mat Y)
 {
     NN_ASSERT(X.rows == Y.rows);
+    NN_ASSERT(NN_OUTPUT(m).cols == Y.cols);
     size_t n = X.rows;
 
-    // 1. 清空梯度网络 g
-    nn_zero(g);
+    // i - current sample
+    // l - current layer
+    // j - current activation
+    // k - previous activation
 
-    // 遍历每一个样本 (SGD/Mini-batch)
     for (size_t i = 0; i < n; i++)
     {
-        // 取出当前样本
-        Mat    = mat_row(X, i);
-        Mat y = mat_row(Y, i);
-
-        // 2. 前向传播 (填充 m.as)
-        mat_copy(NN_INPUT(m), x);
+        mat_copy(NN_INPUT(m), mat_row(X, i));
         nn_forward(m);
 
-        // 3. 反向传播
-        // 我们需要保存每一层的误差信号 (delta)
-        // 注意：为了保持你的框架简洁，这里我们在循环内分配临时内存。
-        // 在生产环境中，应该预分配这些内存以提高性能。
-
-        // --- 输出层误差 ---
-        // Cost Function: MSE = 0.5 * (a - y)^2
-        // dC/da = (a - y)
-        // Activation: Sigmoid
-        // da/dz = a * (1 - a)
-        // Delta L = (a - y) * a * (1 - a)
-
-        Mat out = NN_OUTPUT(m);
-        Mat delta = mat_alloc(out.rows, out.cols); // 1 x 10
-
-        for (size_t j = 0; j < out.cols; j++)
+        for (size_t j = 0; j < Y.cols; j++)
         {
-            float a = MAT_AT(out, 0, j);
-            float target = MAT_AT(y, 0, j);
-            // MSE derivative * Sigmoid derivative
-            MAT_AT(delta, 0, j) = 2.0f * (a - target) * a * (1.0f - a);
+            MAT_AT(NN_OUTPUT(g), 0, j) = MAT_AT(NN_OUTPUT(m), 0, j) - MAT_AT(Y, i, j);
         }
 
-        // --- 反向遍历层 ---
-        for (int l = m.count - 1; l >= 0; l--)
+        for (size_t l = m.count; l > 0; l--)
         {
-            // 当前层的激活值 (上一层的输出)
-            Mat current_act = m.as[l];
-
-            // 计算权重梯度: dC/dw = delta * a_prev^T
-            // 由于我们是行向量，这实际上是: a_prev^T * delta
-            // g.ws[l] += current_act.T dot delta
-            for (size_t r = 0; r < g.ws[l].rows; r++)
+            for (size_t j = 0; j < m.as[l].cols; j++)
             {
-                for (size_t c = 0; c < g.ws[l].cols; c++)
+                float a = MAT_AT(m.as[l], 0, j);
+                float da = MAT_AT(g.as[l], 0, j);
+                MAT_AT(g.bs[l - 1], 0, j) += 2 * da * a * (1 - a);
+                for (size_t k = 0; k < m.as[l - 1].cols; k++)
                 {
-                    float val = MAT_AT(current_act, 0, r) * MAT_AT(delta, 0, c);
-                    MAT_AT(g.ws[l], r, c) += val;
-                }
-            }
-
-            // 计算偏置梯度: dC/db = delta
-            for (size_t c = 0; c < g.bs[l].cols; c++)
-            {
-                MAT_AT(g.bs[l], 0, c) += MAT_AT(delta, 0, c);
-            }
-
-            // 如果不是第一层，计算下一层（向前看是前一层）的误差 delta
-            if (l > 0)
-            {
-                Mat prev_delta = mat_alloc(1, m.as[l].cols);
-                Mat w = m.ws[l];
-
-                // delta_prev = (delta dot w.T) * sigmoid_derivative
-                for (size_t k = 0; k < w.rows; k++)
-                {
-                    float sum = 0.0f;
-                    for (size_t j = 0; j < w.cols; j++)
-                    {
-                        sum += MAT_AT(delta, 0, j) * MAT_AT(w, k, j);
-                    }
-                    float a = MAT_AT(m.as[l], 0, k);
-                    MAT_AT(prev_delta, 0, k) = sum * a * (1.0f - a);
-                }
-
-                free(delta.es);     // 释放旧 delta
-                delta = prev_delta; // 更新 delta
+                                }
             }
         }
-        free(delta.es);
-    }
-
-    // 平均梯度
-    for (size_t i = 0; i < g.count; i++)
-    {
-        for (size_t j = 0; j < g.ws[i].rows * g.ws[i].cols; j++)
-            g.ws[i].es[j] /= n;
-        for (size_t j = 0; j < g.bs[i].rows * g.bs[i].cols; j++)
-            g.bs[i].es[j] /= n;
     }
 }
 
