@@ -121,7 +121,7 @@ int main()
 
     // 2. 加载数据
     // 我们只加载部分数据进行演示 (例如 5000 张)，全部 60000 张训练会花一点时间
-    size_t train_count = 60000;
+    size_t train_count = 5000;
     Mat train_X, train_Y;
     load_mnist("train-images.idx3-ubyte", "train-labels.idx1-ubyte", &train_X, &train_Y, train_count);
 
@@ -149,28 +149,7 @@ int main()
             Mat batch_Y = {
                 .rows = size, .cols = train_Y.cols, .stride = train_Y.stride, .es = &MAT_AT(train_Y, i, 0)};
 
-            // 使用反向传播计算梯度
-            nn_backprop(m, g, batch_X, batch_Y);
-
-            // 应用梯度更新 (SGD)
-            // 这里我们手动实现更新，或者复用 nn_train 但改用 nn_backprop
-            for (size_t l = 0; l < m.count; l++)
-            {
-                for (size_t r = 0; r < m.ws[l].rows; r++)
-                {
-                    for (size_t c = 0; c < m.ws[l].cols; c++)
-                    {
-                        MAT_AT(m.ws[l], r, c) -= lr * MAT_AT(g.ws[l], r, c);
-                    }
-                }
-                for (size_t r = 0; r < m.bs[l].rows; r++)
-                {
-                    for (size_t c = 0; c < m.bs[l].cols; c++)
-                    {
-                        MAT_AT(m.bs[l], r, c) -= lr * MAT_AT(g.bs[l], r, c);
-                    }
-                }
-            }
+            nn_train(m, g, batch_X, batch_Y, lr);
         }
 
         printf("Epoch %zu: Accuracy = %.2f%%\n", epoch + 1, accuracy(m, train_X, train_Y) * 100);

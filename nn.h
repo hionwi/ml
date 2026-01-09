@@ -56,7 +56,6 @@ void nn_print(NN m, const char *name);
 void nn_rand(NN m, float low, float high);
 void nn_forward(NN m);
 float nn_cost(NN m, Mat X, Mat Y);
-float nn_finite_diff(NN m, NN g, float eps, Mat X, Mat Y);
 void nn_train(NN m, NN g, Mat X, Mat Y, float lr);
 
 void nn_backprop(NN m, NN g, Mat X, Mat Y);
@@ -256,63 +255,6 @@ float nn_cost(NN m, Mat X, Mat Y)
     return c / n;
 }
 
-float nn_finite_diff(NN m, NN g, float eps, Mat X, Mat Y)
-{
-    float saved;
-    float c = nn_cost(m, X, Y);
-
-    for (size_t l = 0; l < m.count; l++)
-    {
-        for (size_t i = 0; i < m.ws[l].rows; i++)
-        {
-            for (size_t j = 0; j < m.ws[l].cols; j++)
-            {
-                saved = MAT_AT(m.ws[l], i, j);
-                MAT_AT(m.ws[l], i, j) = saved + eps;
-                float c1 = nn_cost(m, X, Y);
-                MAT_AT(g.ws[l], i, j) = (c1 - c) / (eps);
-                MAT_AT(m.ws[l], i, j) = saved;
-            }
-        }
-        for (size_t i = 0; i < m.bs[l].rows; i++)
-        {
-            for (size_t j = 0; j < m.bs[l].cols; j++)
-            {
-                saved = MAT_AT(m.bs[l], i, j);
-                MAT_AT(m.bs[l], i, j) = saved + eps;
-                float c1 = nn_cost(m, X, Y);
-                MAT_AT(g.bs[l], i, j) = (c1 - c) / (eps);
-                MAT_AT(m.bs[l], i, j) = saved;
-            }
-        }
-    }
-
-    return c;
-}
-
-void nn_train(NN m, NN g, Mat X, Mat Y, float lr)
-{
-    nn_finite_diff(m, g, 1e-4f, X, Y);
-
-    for (size_t l = 0; l < m.count; l++)
-    {
-        for (size_t i = 0; i < m.ws[l].rows; i++)
-        {
-            for (size_t j = 0; j < m.ws[l].cols; j++)
-            {
-                MAT_AT(m.ws[l], i, j) -= lr * MAT_AT(g.ws[l], i, j);
-            }
-        }
-        for (size_t i = 0; i < m.bs[l].rows; i++)
-        {
-            for (size_t j = 0; j < m.bs[l].cols; j++)
-            {
-                MAT_AT(m.bs[l], i, j) -= lr * MAT_AT(g.bs[l], i, j);
-            }
-        }
-    }
-}
-
 void nn_backprop(NN m, NN g, Mat X, Mat Y)
 {
     NN_ASSERT(X.rows == Y.rows);
@@ -329,6 +271,11 @@ void nn_backprop(NN m, NN g, Mat X, Mat Y)
         mat_copy(NN_INPUT(m), mat_row(X, i));
         nn_forward(m);
 
+        for (size_t j = 0; j <= m.count; j++)
+        {
+            mat_fill(g.as[j], 0);
+        }
+
         for (size_t j = 0; j < Y.cols; j++)
         {
             MAT_AT(NN_OUTPUT(g), 0, j) = MAT_AT(NN_OUTPUT(m), 0, j) - MAT_AT(Y, i, j);
@@ -340,10 +287,57 @@ void nn_backprop(NN m, NN g, Mat X, Mat Y)
             {
                 float a = MAT_AT(m.as[l], 0, j);
                 float da = MAT_AT(g.as[l], 0, j);
-                MAT_AT(g.bs[l - 1], 0, j) += 2 * da * a * (1 - a);
+                float db = 2 * da * a * (1 - a);
+                MAT_AT(g.bs[l - 1], 0, j) += db;
                 for (size_t k = 0; k < m.as[l - 1].cols; k++)
                 {
-                                }
+                    float pa = MAT_AT(m.as[l - 1], 0, k);
+                    float pw = MAT_AT(m.ws[l - 1], k, j);
+                    MAT_AT(g.ws[l - 1], k, j) += db * pa;
+                    MAT_AT(g.as[l - 1], 0, k) += db * pw;
+                }
+            }
+        }
+    }
+
+    // average gradients over all samples
+    for (size_t l = 0; l < m.count; l++)
+    {
+        for (size_t i = 0; i < g.ws[l].rows; i++)
+        {
+            for (size_t j = 0; j < g.ws[l].cols; j++)
+            {
+                MAT_AT(g.ws[l], i, j) /= n;
+            }
+        }
+        for (size_t i = 0; i < g.bs[l].rows; i++)
+        {
+            for (size_t j = 0; j < g.bs[l].cols; j++)
+            {
+                MAT_AT(g.bs[l], i, j) /= n;
+            }
+        }
+    }
+}
+
+void nn_train(NN m, NN g, Mat X, Mat Y, float lr)
+{
+    nn_backprop(m, g, X, Y);
+
+    for (size_t l = 0; l < m.count; l++)
+    {
+        for (size_t i = 0; i < m.ws[l].rows; i++)
+        {
+            for (size_t j = 0; j < m.ws[l].cols; j++)
+            {
+                MAT_AT(m.ws[l], i, j) -= lr * MAT_AT(g.ws[l], i, j);
+            }
+        }
+        for (size_t i = 0; i < m.bs[l].rows; i++)
+        {
+            for (size_t j = 0; j < m.bs[l].cols; j++)
+            {
+                MAT_AT(m.bs[l], i, j) -= lr * MAT_AT(g.bs[l], i, j);
             }
         }
     }
