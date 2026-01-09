@@ -113,7 +113,7 @@ int main()
     // 1. 设置网络架构
     // 输入: 784 (28x28), 隐藏层: 32, 输出: 10
     // 注意：隐藏层越大效果越好，但计算越慢。
-    size_t arch[] = {784, 128, 10};
+    size_t arch[] = {784, 64, 10};
     NN m = nn_alloc(arch, ARRAY_LEN(arch));
     NN g = nn_alloc(arch, ARRAY_LEN(arch));
 

@@ -22,7 +22,7 @@ typedef struct
     size_t rows;
     size_t cols;
     size_t stride;
-    float *es;
+    double *es;
 } Mat;
 
 typedef struct
@@ -37,26 +37,26 @@ typedef struct
 #define NN_INPUT(nn) ((nn).as[0])
 #define NN_OUTPUT(nn) ((nn).as[(nn).count])
 
-float sigmoid(float x);
+double sigmoid(double x);
 void mat_sig(Mat m);
 
 Mat mat_alloc(size_t rows, size_t cols);
-void mat_rand(Mat m, float low, float high);
+void mat_rand(Mat m, double low, double high);
 void mat_dot(Mat dst, Mat a, Mat b);
 void mat_sum(Mat dst, Mat a);
 void mat_print(Mat m, const char *name, size_t padding);
 #define MAT_PRINT(m) mat_print(m, #m, 0)
-void mat_fill(Mat m, float val);
+void mat_fill(Mat m, double val);
 Mat mat_row(Mat m, size_t row);
 void mat_copy(Mat dst, Mat src);
 
 NN nn_alloc(size_t *arch, size_t arch_count);
 void nn_print(NN m, const char *name);
 #define NN_PRINT(m) nn_print(m, #m)
-void nn_rand(NN m, float low, float high);
+void nn_rand(NN m, double low, double high);
 void nn_forward(NN m);
-float nn_cost(NN m, Mat X, Mat Y);
-void nn_train(NN m, NN g, Mat X, Mat Y, float lr);
+double nn_cost(NN m, Mat X, Mat Y);
+void nn_train(NN m, NN g, Mat X, Mat Y, double lr);
 
 void nn_backprop(NN m, NN g, Mat X, Mat Y);
 
@@ -111,7 +111,7 @@ void mat_print(Mat m, const char *name, size_t padding)
         printf("%*s", (int)padding, "");
         for (size_t j = 0; j < m.cols; j++)
         {
-            float val = MAT_AT(m, i, j);
+            double val = MAT_AT(m, i, j);
             printf("%f ", val);
         }
         printf("\n");
@@ -119,18 +119,18 @@ void mat_print(Mat m, const char *name, size_t padding)
     printf("%*s]\n", (int)padding, "");
 }
 
-void mat_rand(Mat m, float low, float high)
+void mat_rand(Mat m, double low, double high)
 {
     for (size_t i = 0; i < m.rows; i++)
     {
         for (size_t j = 0; j < m.cols; j++)
         {
-            MAT_AT(m, i, j) = (((float)rand() / (float)RAND_MAX) * (high - low)) + low;
+            MAT_AT(m, i, j) = (((double)rand() / (double)RAND_MAX) * (high - low)) + low;
         }
     }
 }
 
-void mat_fill(Mat m, float val)
+void mat_fill(Mat m, double val)
 {
     for (size_t i = 0; i < m.rows; i++)
     {
@@ -141,7 +141,7 @@ void mat_fill(Mat m, float val)
     }
 }
 
-float sigmoid(float x)
+double sigmoid(double x)
 {
     return 1.0f / (1.0f + expf(-x));
 }
@@ -209,7 +209,7 @@ void nn_print(NN m, const char *name)
     printf("]\n");
 }
 
-void nn_rand(NN m, float low, float high)
+void nn_rand(NN m, double low, double high)
 {
     for (size_t i = 0; i < m.count; i++)
     {
@@ -228,14 +228,14 @@ void nn_forward(NN m)
     }
 }
 
-float nn_cost(NN m, Mat X, Mat Y)
+double nn_cost(NN m, Mat X, Mat Y)
 {
     NN_ASSERT(X.rows == Y.rows);
     NN_ASSERT(Y.cols == NN_OUTPUT(m).cols);
     size_t n = X.rows;
     size_t q = Y.cols;
 
-    float c = 0;
+    double c = 0;
 
     for (size_t i = 0; i < n; i++)
     {
@@ -247,7 +247,7 @@ float nn_cost(NN m, Mat X, Mat Y)
 
         for (size_t j = 0; j < q; j++)
         {
-            float diff = MAT_AT(NN_OUTPUT(m), 0, j) - MAT_AT(y, 0, j);
+            double diff = MAT_AT(NN_OUTPUT(m), 0, j) - MAT_AT(y, 0, j);
             c += diff * diff;
         }
     }
@@ -285,14 +285,14 @@ void nn_backprop(NN m, NN g, Mat X, Mat Y)
         {
             for (size_t j = 0; j < m.as[l].cols; j++)
             {
-                float a = MAT_AT(m.as[l], 0, j);
-                float da = MAT_AT(g.as[l], 0, j);
-                float db = 2 * da * a * (1 - a);
+                double a = MAT_AT(m.as[l], 0, j);
+                double da = MAT_AT(g.as[l], 0, j);
+                double db = 2 * da * a * (1 - a);
                 MAT_AT(g.bs[l - 1], 0, j) += db;
                 for (size_t k = 0; k < m.as[l - 1].cols; k++)
                 {
-                    float pa = MAT_AT(m.as[l - 1], 0, k);
-                    float pw = MAT_AT(m.ws[l - 1], k, j);
+                    double pa = MAT_AT(m.as[l - 1], 0, k);
+                    double pw = MAT_AT(m.ws[l - 1], k, j);
                     MAT_AT(g.ws[l - 1], k, j) += db * pa;
                     MAT_AT(g.as[l - 1], 0, k) += db * pw;
                 }
@@ -320,7 +320,7 @@ void nn_backprop(NN m, NN g, Mat X, Mat Y)
     }
 }
 
-void nn_train(NN m, NN g, Mat X, Mat Y, float lr)
+void nn_train(NN m, NN g, Mat X, Mat Y, double lr)
 {
     nn_backprop(m, g, X, Y);
 
