@@ -1,9 +1,14 @@
-/download_mnist.sh
-/gates
-/mnist_train
-/nn
-/t10k-images.idx3-ubyte
-/t10k-labels.idx1-ubyte
-/train-images.idx3-ubyte
-/train-labels.idx1-ubyte
-/twice
+# 1. 忽略所有文件
+*
+
+# 2. 但不要忽略文件夹，否则无法递归扫描子目录
+!*/
+
+# 3. 允许 (不忽略) 特定后缀的文件
+!*.c
+!*.h
+!*.sh
+
+# 4. (可选) 如果有特定的配置文件需要保留，也可以单独排除
+!.gitignore
+!README.md
